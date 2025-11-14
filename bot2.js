@@ -456,7 +456,7 @@ bot.onText(/\/start/, (msg) => {
     '🔍 /check - Check New Tokens\n' +
     '📊 /stats - Statistic\n' +
     '🆔 /getchatid - Chat ID\n' +
-    '📋 /list - Show processed tokens' 
+    '📋 /list - Show processed tokens', 
     { parse_mode: 'Markdown' }
   );
 });
@@ -613,4 +613,5 @@ startBot().catch(err => {
   removeLockFile();
   process.exit(1);
 });
+
 
