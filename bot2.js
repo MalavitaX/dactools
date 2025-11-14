@@ -10,10 +10,16 @@ const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const CHANNEL_ID = process.env.TELEGRAM_CHANNEL_ID;
 const CHECK_INTERVAL = parseInt(process.env.CHECK_INTERVAL) || 20000;
 const BOT_USERNAME = process.env.BOT_USERNAME || '@DAC_CTO_bot';
-const DATABASE_FILE = path.join(__dirname, 'database.json');
+const DATABASE_FILE = process.env.DATABASE_PATH || path.join(__dirname, 'database.json');
 const LOCKFILE = path.join(__dirname, 'bot.lock');
 const botStartTime = new Date();
 const PORT = process.env.PORT || 3000;
+
+// USE_MEMORY_DB - если true, использует только память (для Render)
+const USE_MEMORY_DB = process.env.USE_MEMORY_DB === 'true' || false;
+
+console.log(`📁 Database mode: ${USE_MEMORY_DB ? 'MEMORY ONLY' : 'FILE SYSTEM'}`);
+console.log(`📂 Database path: ${DATABASE_FILE}`);
 
 // -------------------------------
 // Проверка на множественный запуск
@@ -112,13 +118,22 @@ try {
 // База данных обработанных токенов
 let processedTokens = new Set();
 
+// Хранилище последних 50 токенов для отслеживания в памяти
+let recentTokens = [];
+const MAX_RECENT_TOKENS = 50;
+
 function loadDatabase() {
+  if (USE_MEMORY_DB) {
+    console.log('ℹ️ Memory-only mode: Database will not persist between restarts');
+    return;
+  }
+  
   try {
     if (fs.existsSync(DATABASE_FILE)) {
       const data = fs.readFileSync(DATABASE_FILE, 'utf8');
       const parsed = JSON.parse(data);
       processedTokens = new Set(Array.isArray(parsed) ? parsed : []);
-      console.log(`✅ Loaded ${processedTokens.size} processed tokens`);
+      console.log(`✅ Loaded ${processedTokens.size} processed tokens from file`);
     } else {
       console.log('ℹ️ No database file found, starting fresh');
     }
@@ -129,6 +144,11 @@ function loadDatabase() {
 }
 
 function saveDatabase() {
+  if (USE_MEMORY_DB) {
+    // В режиме памяти не сохраняем в файл
+    return true;
+  }
+  
   try {
     const data = [...processedTokens];
     fs.writeFileSync(DATABASE_FILE, JSON.stringify(data, null, 2), 'utf8');
@@ -138,6 +158,28 @@ function saveDatabase() {
     console.error('❌ Database save error:', err.message);
     return false;
   }
+}
+
+// Добавляем токен в список последних обработанных
+function addToRecentTokens(tokenId, tokenData) {
+  recentTokens.unshift({
+    id: tokenId,
+    address: tokenData.tokenAddress,
+    chain: tokenData.chainId,
+    timestamp: Date.now(),
+    claimDate: tokenData.claimDate
+  });
+  
+  // Оставляем только последние 50
+  if (recentTokens.length > MAX_RECENT_TOKENS) {
+    recentTokens = recentTokens.slice(0, MAX_RECENT_TOKENS);
+  }
+}
+
+// Проверка, был ли токен обработан недавно (последние 24 часа)
+function wasRecentlyProcessed(tokenId) {
+  const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000);
+  return recentTokens.some(t => t.id === tokenId && t.timestamp > oneDayAgo);
 }
 
 // -------------------------------
@@ -299,8 +341,8 @@ async function sendToChannel(ctoData, tokenDetails) {
     const keyboard = {
       inline_keyboard: [[
         { text: '📊 DexScreener', url: ctoData.url },
-        { text: '🪙 Axiom.trade', url: 'https://axiom.trade/' },
-        { text: '🤖 @maestro', url: 'https://t.me/maestro' }
+        { text: '🪙 Axiom', url: 'https://axiom.trade/' },
+        { text: '🤖 Maestro', url: 'https://t.me/maestro' }
       ]]
     };
     
@@ -350,6 +392,7 @@ async function checkForNewTokens() {
   
   console.log(`📋 Found ${tokens.length} tokens in API`);
   console.log(`📊 Current database size: ${processedTokens.size}`);
+  console.log(`📝 Recent tokens in memory: ${recentTokens.length}`);
   
   let newCount = 0;
   for (const token of tokens) {
@@ -362,7 +405,11 @@ async function checkForNewTokens() {
     const normalizedAddress = token.tokenAddress.toLowerCase();
     const tokenId = `${token.chainId.toLowerCase()}-${normalizedAddress}`;
     
-    if (!processedTokens.has(tokenId)) {
+    // Проверяем и в Set и в recent tokens
+    const inDatabase = processedTokens.has(tokenId);
+    const inRecent = wasRecentlyProcessed(tokenId);
+    
+    if (!inDatabase && !inRecent) {
       console.log(`🆕 New Token Found: ${token.tokenAddress} (${token.chainId})`);
       console.log(`   Token ID: ${tokenId}`);
       console.log(`   Claim Date: ${token.claimDate}`);
@@ -370,12 +417,14 @@ async function checkForNewTokens() {
       const details = await fetchTokenDetails(token.chainId, token.tokenAddress);
       await sendToChannel(token, details);
       
-      // Add to set and save immediately
+      // Add to both storage methods
       processedTokens.add(tokenId);
+      addToRecentTokens(tokenId, token);
+      
       const saved = saveDatabase();
       
-      if (saved) {
-        console.log(`✅ Token saved to database. New size: ${processedTokens.size}`);
+      if (saved || USE_MEMORY_DB) {
+        console.log(`✅ Token saved. DB size: ${processedTokens.size}, Recent: ${recentTokens.length}`);
       } else {
         console.error(`❌ Failed to save token: ${tokenId}`);
       }
@@ -384,7 +433,8 @@ async function checkForNewTokens() {
       
       await new Promise(r => setTimeout(r, 2000)); // задержка между отправками
     } else {
-      console.log(`⏭️ Already processed: ${normalizedAddress}`);
+      const source = inDatabase ? 'database' : 'recent memory';
+      console.log(`⏭️ Already processed (${source}): ${normalizedAddress}`);
     }
   }
   
@@ -400,13 +450,13 @@ async function checkForNewTokens() {
 // Команды Telegram
 bot.onText(/\/start/, (msg) => {
   bot.sendMessage(msg.chat.id, 
-    '🤖 *DAC CTO Hunter Bot* 🤖\n\n' +
-    'Available commands:\n' +
-    '/status - Check bot status\n' +
-    '/check - Force check for new tokens\n' +
-    '/stats - View statistics\n' +
-    '/list - Show processed tokens\n' +
-    '/getchatid - Get current chat ID\n' +
+    '🤖 DAC CTO Hunter 🤖\n\n' +
+    '⚡ Available commands:\n' +
+    '🟢 /status - Bot Status\n' +
+    '🔍 /check - Check New Tokens\n' +
+    '📊 /stats - Statistic\n' +
+    '🆔 /getchatid - Chat ID\n' +
+    '📋 /list - Show processed tokens\n' 
     { parse_mode: 'Markdown' }
   );
 });
@@ -430,12 +480,16 @@ bot.onText(/\/check/, async (msg) => {
 
 bot.onText(/\/stats/, (msg) => {
   const uptime = Math.floor((new Date() - botStartTime) / 1000 / 60);
+  const dbExists = USE_MEMORY_DB ? 'N/A (Memory mode)' : (fs.existsSync(DATABASE_FILE) ? '✅ Exists' : '❌ Missing');
+  
   bot.sendMessage(msg.chat.id,
     `📈 *Bot Statistics*\n\n` +
+    `Storage Mode: ${USE_MEMORY_DB ? '💾 Memory Only' : '📁 File System'}\n` +
     `Processed Tokens: ${processedTokens.size}\n` +
+    `Recent Tokens (24h): ${recentTokens.length}\n` +
     `Running Since: ${botStartTime.toLocaleString('en-US')}\n` +
     `Uptime: ${uptime} minutes\n` +
-    `Database File: ${fs.existsSync(DATABASE_FILE) ? '✅ Exists' : '❌ Missing'}`,
+    `Database File: ${dbExists}`,
     { parse_mode: 'Markdown' }
   );
 });
@@ -462,15 +516,17 @@ bot.onText(/\/clear/, (msg) => {
 });
 
 bot.onText(/\/list/, (msg) => {
-  if (processedTokens.size === 0) {
-    bot.sendMessage(msg.chat.id, '📋 No tokens in database yet.');
+  if (recentTokens.length === 0) {
+    bot.sendMessage(msg.chat.id, '📋 No recent tokens processed yet.');
     return;
   }
   
-  const tokens = [...processedTokens].slice(0, 10);
-  let message = `📋 *Processed Tokens* (showing ${tokens.length}/${processedTokens.size}):\n\n`;
+  const tokens = recentTokens.slice(0, 10);
+  let message = `📋 *Recent Tokens* (showing ${tokens.length}/${recentTokens.length}):\n\n`;
   tokens.forEach((token, i) => {
-    message += `${i + 1}. \`${token}\`\n`;
+    const timeAgo = Math.floor((Date.now() - token.timestamp) / 1000 / 60);
+    message += `${i + 1}. ${token.chain.toUpperCase()}: \`${token.address.slice(0, 10)}...\`\n`;
+    message += `   ⏰ ${timeAgo}m ago\n\n`;
   });
   
   bot.sendMessage(msg.chat.id, message, { parse_mode: 'Markdown' });
