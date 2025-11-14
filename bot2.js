@@ -11,8 +11,59 @@ const CHANNEL_ID = process.env.TELEGRAM_CHANNEL_ID;
 const CHECK_INTERVAL = parseInt(process.env.CHECK_INTERVAL) || 20000;
 const BOT_USERNAME = process.env.BOT_USERNAME || '@DAC_CTO_bot';
 const DATABASE_FILE = path.join(__dirname, 'database.json');
+const LOCKFILE = path.join(__dirname, 'bot.lock');
 const botStartTime = new Date();
 const PORT = process.env.PORT || 3000;
+
+// -------------------------------
+// Проверка на множественный запуск
+function checkLockFile() {
+  if (fs.existsSync(LOCKFILE)) {
+    try {
+      const lockData = JSON.parse(fs.readFileSync(LOCKFILE, 'utf8'));
+      const lockAge = Date.now() - lockData.timestamp;
+      
+      // Если lock старше 5 минут, считаем его устаревшим
+      if (lockAge > 300000) {
+        console.log('⚠️ Stale lock file detected, removing...');
+        fs.unlinkSync(LOCKFILE);
+        return false;
+      }
+      
+      console.log('❌ Another bot instance is already running!');
+      console.log(`Lock created at: ${new Date(lockData.timestamp).toISOString()}`);
+      return true;
+    } catch (err) {
+      console.log('⚠️ Invalid lock file, removing...');
+      fs.unlinkSync(LOCKFILE);
+      return false;
+    }
+  }
+  return false;
+}
+
+function createLockFile() {
+  try {
+    fs.writeFileSync(LOCKFILE, JSON.stringify({
+      timestamp: Date.now(),
+      pid: process.pid
+    }));
+    console.log('🔒 Lock file created');
+  } catch (err) {
+    console.error('❌ Failed to create lock file:', err.message);
+  }
+}
+
+function removeLockFile() {
+  try {
+    if (fs.existsSync(LOCKFILE)) {
+      fs.unlinkSync(LOCKFILE);
+      console.log('🔓 Lock file removed');
+    }
+  } catch (err) {
+    console.error('❌ Failed to remove lock file:', err.message);
+  }
+}
 
 // -------------------------------
 // Простой HTTP сервер для Render
@@ -20,6 +71,15 @@ http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
   res.end('OK');
 }).listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
+// -------------------------------
+// Проверка множественного запуска
+if (checkLockFile()) {
+  console.log('❌ Exiting due to existing bot instance');
+  process.exit(1);
+}
+
+createLockFile();
 
 // -------------------------------
 // Инициализация бота
@@ -32,10 +92,19 @@ try {
     throw new Error('TELEGRAM_CHANNEL_ID is not defined in .env file');
   }
   
-  bot = new TelegramBot(BOT_TOKEN, { polling: true });
+  bot = new TelegramBot(BOT_TOKEN, { 
+    polling: {
+      interval: 300,
+      autoStart: true,
+      params: {
+        timeout: 10
+      }
+    }
+  });
   console.log('🤖 Bot is running!');
 } catch (error) {
   console.error('❌ Bot initialization error:', error.message);
+  removeLockFile();
   process.exit(1);
 }
 
@@ -410,6 +479,13 @@ bot.onText(/\/list/, (msg) => {
 // Обработка ошибок polling
 bot.on('polling_error', (error) => {
   console.error('❌ Polling error:', error.message);
+  
+  // Если конфликт - останавливаем бота
+  if (error.message.includes('409 Conflict')) {
+    console.error('🛑 Conflict detected! Shutting down...');
+    removeLockFile();
+    process.exit(1);
+  }
 });
 
 bot.on('error', (error) => {
@@ -442,22 +518,42 @@ process.on('unhandledRejection', (reason, promise) => {
 process.on('uncaughtException', (error) => {
   console.error('❌ Uncaught Exception:', error);
   saveDatabase();
+  removeLockFile();
+  process.exit(1);
 });
 
 process.on('SIGINT', () => {
   console.log('\n👋 Shutting down bot...');
   saveDatabase();
+  removeLockFile();
   process.exit(0);
 });
 
 process.on('SIGTERM', () => {
   console.log('\n👋 Received SIGTERM, shutting down...');
   saveDatabase();
+  removeLockFile();
   process.exit(0);
 });
+
+// Периодическое обновление lock file
+setInterval(() => {
+  try {
+    if (fs.existsSync(LOCKFILE)) {
+      const lockData = JSON.parse(fs.readFileSync(LOCKFILE, 'utf8'));
+      lockData.timestamp = Date.now();
+      fs.writeFileSync(LOCKFILE, JSON.stringify(lockData));
+    } else {
+      createLockFile();
+    }
+  } catch (err) {
+    console.error('❌ Failed to update lock file:', err.message);
+  }
+}, 60000); // Обновляем каждую минуту
 
 // Запуск
 startBot().catch(err => {
   console.error('❌ Fatal error during bot startup:', err);
+  removeLockFile();
   process.exit(1);
 });
