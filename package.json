@@ -1,9 +1,8 @@
-
 {
   "name": "dex-cto-bot",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "bot2.js",
   "scripts": {
     "start": "node bot2.js"
   },
@@ -18,10 +17,5 @@
     "dotenv": "^17.2.3",
     "node-cron": "^4.2.1",
     "node-telegram-bot-api": "^0.66.0"
-  }
-}
-{
-  "scripts": {
-    "start": "node bot2.js"
   }
 }
