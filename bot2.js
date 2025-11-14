@@ -8,7 +8,7 @@ const path = require('path');
 // Конфигурация
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const CHANNEL_ID = process.env.TELEGRAM_CHANNEL_ID;
-const CHECK_INTERVAL = parseInt(process.env.CHECK_INTERVAL) || 60000;
+const CHECK_INTERVAL = parseInt(process.env.CHECK_INTERVAL) || 20000;
 const BOT_USERNAME = process.env.BOT_USERNAME || '@DAC_CTO_bot';
 const DATABASE_FILE = path.join(__dirname, 'database.json');
 
@@ -331,8 +331,7 @@ bot.onText(/\/start/, (msg) => {
     '🟢 /status - Bot Status\n' +
     '🔍 /check - Check New Tokens\n' +
     '📊 /stats - Statistic\n' +
-    '🆔 /getchatid - Chat ID\n' +
-    '🧹 /clear - Clear Database'
+    '🆔 /getchatid - Chat ID\n' 
   );
 });
 
@@ -413,3 +412,4 @@ process.on('SIGINT', () => {
 // Запуск
 
 startBot();
+
