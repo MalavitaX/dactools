@@ -278,20 +278,40 @@ const keyboard = {
     ]
   ]
 };
-    // Если есть иконка токена, отправляем с фото
-    if (ctoData.icon) {
-      await bot.sendPhoto(CHANNEL_ID, ctoData.icon, {
-        caption: message,
-        parse_mode: 'Markdown',
-        reply_markup: keyboard
-      });
-    } else {
-      await bot.sendMessage(CHANNEL_ID, message, {
-        parse_mode: 'Markdown',
-        disable_web_page_preview: true,
-        reply_markup: keyboard
-      });
-    }
+    ctoData.banner = pair.info?.imageUrl;   // <-- добавить!
+// Попытка взять баннер DexScreener
+const banner =
+  ctoData.banner ||
+  ctoData.image ||
+  ctoData.pairImage ||
+  ctoData.pairInfo?.image ||
+  ctoData.info?.imageUrl ||
+  ctoData.pairInfo?.imageUrl;
+
+// Если нашли баннер — отправляем его
+if (banner) {
+  await bot.sendPhoto(CHANNEL_ID, banner, {
+    caption: message,
+    parse_mode: 'Markdown',
+    reply_markup: keyboard
+  });
+}
+// Если баннера нет — отправляем icon
+else if (ctoData.icon) {
+  await bot.sendPhoto(CHANNEL_ID, ctoData.icon, {
+    caption: message,
+    parse_mode: 'Markdown',
+    reply_markup: keyboard
+  });
+}
+// Если нет вообще ничего — просто текст
+else {
+  await bot.sendMessage(CHANNEL_ID, message, {
+    parse_mode: 'Markdown',
+    disable_web_page_preview: true,
+    reply_markup: keyboard
+  });
+}
     
     console.log(`✅ Sent message about Token: ${ctoData.tokenAddress}`);
   } catch (error) {
@@ -431,6 +451,7 @@ process.on('SIGINT', () => {
 // Запуск
 
 startBot();
+
 
 
 
