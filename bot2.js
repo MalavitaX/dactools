@@ -325,7 +325,6 @@ bot.onText(/\/start/, (msg) => {
     '/stats - View statistics\n' +
     '/list - Show processed tokens\n' +
     '/getchatid - Get current chat ID\n' +
-    '/clear - Clear database (admin only)',
     { parse_mode: 'Markdown' }
   );
 });
@@ -438,3 +437,4 @@ startBot().catch(err => {
   console.error('❌ Fatal error during bot startup:', err);
   process.exit(1);
 });
+
