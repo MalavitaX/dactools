@@ -254,8 +254,8 @@ const keyboard = {
   inline_keyboard: [
     [
       { text: '📊 DexScreener', url: ctoData.url },
-      { text: '🪙 Axiom.trade', url: `https://axiom.trade/token/${ctoData.tokenAddress}` },
-      { text: '🤖 @maestro', url: `https://t.me/maestro?monitor=${ctoData.tokenAddress}` }
+      { text: '🪙 Axiom.trade', url: `https://axiom.trade/meme/${ctoData.tokenAddress}` },
+      { text: '🤖 @maestro', url: `https://t.me/maestro` }
     ]
   ]
 };
@@ -411,4 +411,5 @@ process.on('SIGINT', () => {
 });
 
 // Запуск
+
 startBot();
