@@ -276,6 +276,8 @@ async function checkForNewTokens() {
     return;
   }
   
+  console.log(`📋 Found ${tokens.length} tokens in API`);
+  
   let newCount = 0;
   for (const token of tokens) {
     if (!token.chainId || !token.tokenAddress) {
@@ -283,10 +285,14 @@ async function checkForNewTokens() {
       continue;
     }
     
-    const tokenId = `${token.chainId}-${token.tokenAddress}`;
+    // Normalize addresses to lowercase for consistent comparison
+    const normalizedAddress = token.tokenAddress.toLowerCase();
+    const tokenId = `${token.chainId.toLowerCase()}-${normalizedAddress}`;
     
     if (!processedTokens.has(tokenId)) {
       console.log(`🆕 New Token Found: ${token.tokenAddress} (${token.chainId})`);
+      console.log(`   Token ID: ${tokenId}`);
+      console.log(`   Claim Date: ${token.claimDate}`);
       
       const details = await fetchTokenDetails(token.chainId, token.tokenAddress);
       await sendToChannel(token, details);
@@ -295,6 +301,8 @@ async function checkForNewTokens() {
       newCount++;
       
       await new Promise(r => setTimeout(r, 2000)); // задержка между отправками
+    } else {
+      console.log(`⏭️ Already processed: ${normalizedAddress}`);
     }
   }
   
@@ -315,6 +323,7 @@ bot.onText(/\/start/, (msg) => {
     '/status - Check bot status\n' +
     '/check - Force check for new tokens\n' +
     '/stats - View statistics\n' +
+    '/list - Show processed tokens\n' +
     '/getchatid - Get current chat ID\n' +
     '/clear - Clear database (admin only)',
     { parse_mode: 'Markdown' }
@@ -357,9 +366,25 @@ bot.onText(/\/getchatid/, (msg) => {
 });
 
 bot.onText(/\/clear/, (msg) => {
+  const cleared = processedTokens.size;
   processedTokens.clear();
   saveDatabase();
-  bot.sendMessage(msg.chat.id, '🗑️ Database cleared successfully!');
+  bot.sendMessage(msg.chat.id, `🗑️ Database cleared!\nRemoved ${cleared} token(s)`);
+});
+
+bot.onText(/\/list/, (msg) => {
+  if (processedTokens.size === 0) {
+    bot.sendMessage(msg.chat.id, '📋 No tokens in database yet.');
+    return;
+  }
+  
+  const tokens = [...processedTokens].slice(0, 10);
+  let message = `📋 *Processed Tokens* (showing ${tokens.length}/${processedTokens.size}):\n\n`;
+  tokens.forEach((token, i) => {
+    message += `${i + 1}. \`${token}\`\n`;
+  });
+  
+  bot.sendMessage(msg.chat.id, message, { parse_mode: 'Markdown' });
 });
 
 // Обработка ошибок polling
