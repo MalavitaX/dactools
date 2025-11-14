@@ -32,6 +32,13 @@ if (!process.env.BOT_INSTANCE || process.env.BOT_INSTANCE !== "1") {
 // Инициализация бота
 const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 
+  // Пример обработчика сообщений
+  bot.on('message', (msg) => {
+    console.log('Сообщение от', msg.from.username, ':', msg.text);
+  });
+
+  console.log('🤖 Bot is running!');
+} // <-- закрывающая скобка для if
 // База данных обработанных токенов
 let processedTokens = new Set();
 
@@ -429,6 +436,7 @@ process.on('SIGINT', () => {
 // Запуск
 
 startBot();
+
 
 
 
