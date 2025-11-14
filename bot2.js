@@ -14,13 +14,21 @@ const DATABASE_FILE = path.join(__dirname, 'database.json');
 const botStartTime = new Date();
 const http = require('http');
 // Жёстко задаём порт
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
+// -------------------------------
+// 2️⃣ Поднимаем простой сервер, чтобы Render видел открытый порт
 http.createServer((req, res) => {
-  res.end('OK'); // просто чтобы сервер работал
+  res.end('OK'); // просто подтверждаем, что порт открыт
 }).listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
+
+// -------------------------------
+// 3️⃣ Один экземпляр бота
+if (!process.env.BOT_INSTANCE || process.env.BOT_INSTANCE !== "1") {
+  process.env.BOT_INSTANCE = "1"; // ставим флаг, чтобы другие процессы не запускали бота
+
 // Инициализация бота
 const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 
@@ -421,6 +429,7 @@ process.on('SIGINT', () => {
 // Запуск
 
 startBot();
+
 
 
 
